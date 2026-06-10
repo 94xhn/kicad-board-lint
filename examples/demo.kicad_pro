@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "filename": "demo.kicad_pro",
+    "version": 3
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "track_width": 0.2
+      },
+      {
+        "name": "HighCurrent",
+        "track_width": 1.5,
+        "nets": ["+5V", "+12V"]
+      }
+    ],
+    "meta": {
+      "version": 4
+    }
+  }
+}
