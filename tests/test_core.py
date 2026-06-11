@@ -109,3 +109,18 @@ def test_net_set_collects_all_sources():
 def test_non_board_file_raises():
     with pytest.raises(ValueError, match="kicad_pcb"):
         load_board("(kicad_sch (version 1))")
+
+
+def test_orphaned_top_level_forms_adopted():
+    # A stray ')' can close (kicad_pcb ...) early; KiCad still loads such
+    # files (an official demo board ships this way), so forms after the
+    # early close must still count as part of the board.
+    text = (
+        "(kicad_pcb (version 20241229))\n"
+        '(footprint "L:R" (layer "F.Cu") (at 0 0)\n'
+        '  (property "Reference" "R9" (at 0 0 0))\n'
+        '  (pad "1" smd rect (at 0 0) (size 1 1) (net "A"))\n'
+        ")\n"
+    )
+    board = load_board(text)
+    assert [fp.ref for fp in board.footprints] == ["R9"]

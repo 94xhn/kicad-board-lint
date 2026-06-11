@@ -1,0 +1,6 @@
+- id: kicad-board-lint
+  name: kicad-board-lint
+  description: Find board problems KiCad DRC silently accepts (ghost pads, thin power tracks)
+  entry: kicad-board-lint
+  language: python
+  files: \.kicad_pcb$

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import difflib
 import fnmatch
+import re
 from dataclasses import dataclass
 
 from .core import Board
@@ -50,7 +51,10 @@ def _ignored(ref: str, patterns: tuple[str, ...]) -> bool:
 
 
 def check_ghost_pads(
-    board: Board, *, ignore_refs: tuple[str, ...] = ()
+    board: Board,
+    *,
+    ignore_refs: tuple[str, ...] = (),
+    ignore_pads: tuple[str, ...] = (),
 ) -> list[Finding]:
     """Copper pads with no net assigned.
 
@@ -67,6 +71,8 @@ def check_ghost_pads(
             continue
         for pad in fp.pads:
             if pad.pad_type == "np_thru_hole" or not pad.number:
+                continue
+            if ignore_pads and _ignored(pad.number, ignore_pads):
                 continue
             if not pad.net:  # None (no net entry) or "" (explicit net 0)
                 findings.append(
@@ -86,13 +92,20 @@ def check_ghost_pads(
 
 
 def check_duplicate_pad_nets(
-    board: Board, *, ignore_refs: tuple[str, ...] = ()
+    board: Board,
+    *,
+    ignore_refs: tuple[str, ...] = (),
+    ignore_pads: tuple[str, ...] = (),
 ) -> list[Finding]:
     """Same-numbered pads within one footprint that disagree about their net.
 
     Tactile switches, SOT-223 tabs, thermal pads and multi-pad terminals all
     repeat pad numbers. Some toolpaths assign the net to only one of them —
     the rest export as <no net> and autorouters treat contact as a short.
+
+    All ``unconnected-(...)`` nets count as one "not connected" state: KiCad
+    assigns each duplicate pad its own ``unconnected-(...)_N`` net, and
+    differing ones are normal (seen on KiCad's official demo boards).
     """
     findings: list[Finding] = []
     for fp in board.footprints:
@@ -102,7 +115,12 @@ def check_duplicate_pad_nets(
         for pad in fp.pads:
             if pad.pad_type == "np_thru_hole" or not pad.number:
                 continue
-            groups.setdefault(pad.number, set()).add(pad.net or None)
+            if ignore_pads and _ignored(pad.number, ignore_pads):
+                continue
+            net = pad.net or None
+            if net and net.startswith("unconnected-"):
+                net = None
+            groups.setdefault(pad.number, set()).add(net)
         for number, nets in groups.items():
             if len(nets) > 1:
                 shown = " vs ".join(
@@ -137,6 +155,21 @@ def ipc2221_min_width_mm(
     area_mil2 = (amps / (k * delta_t_c**0.44)) ** (1 / 0.725)
     width_mil = area_mil2 / (MIL_PER_OZ * copper_oz)
     return width_mil * MM_PER_MIL
+
+
+def _kicad_pattern_matches(pattern: str, net: str) -> bool:
+    """Match like KiCad's net-class patterns: wildcards *and* regex.
+
+    KiCad's EDA_COMBINED_MATCHER accepts both ``*``/``?`` wildcards and
+    regular expressions; ``re.fullmatch`` keeps a plain name from matching
+    inside longer net names.
+    """
+    if fnmatch.fnmatchcase(net, pattern):
+        return True
+    try:
+        return re.fullmatch(pattern, net) is not None
+    except re.error:
+        return False
 
 
 def _suggest(name: str, board_nets: set[str]) -> str | None:
@@ -216,7 +249,7 @@ def build_expectations(
         if not pattern or cls_name == "Default" or width is None:
             continue
         for net in board_nets:
-            if fnmatch.fnmatchcase(net, pattern):
+            if _kicad_pattern_matches(pattern, net):
                 expectations[net] = (float(width), f"netclass {cls_name}")
 
     for pattern, width in _parse_assignments(list(rules or []), "--rule"):

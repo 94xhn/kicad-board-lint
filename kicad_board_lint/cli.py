@@ -86,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATTERN",
         help="reference pattern to skip (fnmatch, repeatable), e.g. --ignore-ref 'LOGO*'",
     )
+    parser.add_argument(
+        "--ignore-pad",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help=(
+            "pad number pattern to skip in pad checks (fnmatch, repeatable), "
+            "e.g. --ignore-pad MP for connector mounting pins"
+        ),
+    )
     parser.add_argument("--format", choices=("text", "json"), default="text", dest="fmt")
     parser.add_argument(
         "--strict", action="store_true", help="treat warnings as errors"
@@ -111,8 +121,13 @@ def _check_file(path: Path, checks: tuple[str, ...], args: argparse.Namespace) -
     findings = []
 
     if "ghost-pads" in checks:
-        findings += check_ghost_pads(board, ignore_refs=ignore)
-        findings += check_duplicate_pad_nets(board, ignore_refs=ignore)
+        ignore_pads = tuple(args.ignore_pad)
+        findings += check_ghost_pads(
+            board, ignore_refs=ignore, ignore_pads=ignore_pads
+        )
+        findings += check_duplicate_pad_nets(
+            board, ignore_refs=ignore, ignore_pads=ignore_pads
+        )
 
     if "power-width" in checks:
         pro_data = _load_pro(path, args)
@@ -180,16 +195,17 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
 
     results = []
+    file_errors = 0
     for raw in args.boards:
         path = Path(raw)
         try:
             results.append(_check_file(path, checks, args))
         except OSError as exc:
             print(f"error: cannot read {path}: {exc}", file=sys.stderr)
-            return EXIT_USAGE
+            file_errors += 1
         except ValueError as exc:
             print(f"error: {path}: {exc}", file=sys.stderr)
-            return EXIT_USAGE
+            file_errors += 1
 
     total_errors = sum(r["errors"] for r in results)
     total_warnings = sum(r["warnings"] for r in results)
@@ -213,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
             f"{verdict}: {total_errors} error(s), {total_warnings} warning(s) "
             f"across {len(results)} file(s)"
         )
+    if file_errors:
+        return EXIT_USAGE  # an unreadable/unparseable file outranks lint results
     return EXIT_VIOLATIONS if total_errors else EXIT_CLEAN
 
 

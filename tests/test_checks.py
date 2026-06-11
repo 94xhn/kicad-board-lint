@@ -100,6 +100,33 @@ def test_duplicate_pads_with_two_real_nets_reported():
     assert len(check_duplicate_pad_nets(board)) == 1
 
 
+def test_duplicate_unconnected_nets_are_clean():
+    # KiCad assigns each duplicate pad its own unconnected-(...)_N net —
+    # different unconnected nets are not a conflict (official demo boards).
+    board = board_with(
+        fp(
+            "J502",
+            pad("MP", "unconnected-(J502-MountPin-PadMP)"),
+            pad("MP", "unconnected-(J502-MountPin-PadMP)_1"),
+        )
+    )
+    assert check_duplicate_pad_nets(board) == []
+
+
+def test_real_net_vs_unconnected_still_reported():
+    # one tab grounded, its twin left unconnected — that IS the bug class
+    board = board_with(
+        fp("U1", pad("2", "GND"), pad("2", "unconnected-(U1-Pad2)"))
+    )
+    assert len(check_duplicate_pad_nets(board)) == 1
+
+
+def test_ignore_pads_pattern():
+    board = board_with(fp("J601", pad("MP", None), pad("1", "GND")))
+    assert check_ghost_pads(board, ignore_pads=("MP",)) == []
+    assert len(check_ghost_pads(board)) == 1
+
+
 # ----------------------------------------------------------------- IPC-2221
 
 
@@ -158,6 +185,18 @@ def test_netclass_patterns_assignment():
     assert exp["VBUS"] == (0.8, "netclass Power")
     assert exp["VBUS_SENSE"] == (0.8, "netclass Power")
     assert "GND" not in exp
+
+
+def test_netclass_patterns_accept_regex():
+    # KiCad patterns can be regular expressions, not just wildcards
+    pro = {
+        "net_settings": {
+            "classes": [{"name": "Power", "track_width": 0.8}],
+            "netclass_patterns": [{"pattern": "^/CP[0-9]+$", "netclass": "Power"}],
+        }
+    }
+    exp, _ = build_expectations({"/CP1", "/CP12", "GND"}, pro_data=pro)
+    assert set(exp) == {"/CP1", "/CP12"}
 
 
 def test_rule_overrides_pro_and_current_overrides_rule():

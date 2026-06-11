@@ -48,7 +48,10 @@ def parse(text: str) -> list:
             stack.append(new)
         elif kind == "rparen":
             if len(stack) == 1:
-                raise ValueError(f"unbalanced ')' at offset {match.start()}")
+                # Stray ')': KiCad's own parser tolerates these (an official
+                # demo board ships with hundreds) — skip rather than fail so
+                # every board KiCad opens also parses here.
+                continue
             stack.pop()
         elif kind == "quoted":
             stack[-1].append(QuotedStr(_unquote(match.group(0))))

@@ -97,6 +97,11 @@ Exit codes: `0` clean, `1` errors found (warnings too with `--strict`),
   with it you see only long thin runs — the ones that actually heat up.
 - Mounting holes, logos and other `board_only` footprints are skipped
   automatically; use `--ignore-ref "FID*"` for anything else.
+- Some boards legitimately leave mechanically-named pads netless —
+  connector mounting pins (`MP`), shields, BGA NC balls; KiCad's own demo
+  boards include several. Silence them with `--ignore-pad MP` (matches the
+  pad *number*). The highest-suspicion pattern remains a footprint where
+  *some* pads have nets and others don't.
 - IPC-2221 parameters: `--delta-t` (default 10 °C) and `--copper-oz`
   (default 1 oz). Vias and zone fills are not checked (see limitations).
 
@@ -107,6 +112,17 @@ Exit codes: `0` clean, `1` errors found (warnings too with `--strict`),
   run: |
     pip install git+https://github.com/94xhn/kicad-board-lint
     kicad-board-lint hardware/*.kicad_pcb --min-segment 2
+```
+
+### pre-commit
+
+```yaml
+repos:
+  - repo: https://github.com/94xhn/kicad-board-lint
+    rev: v0.1.0
+    hooks:
+      - id: kicad-board-lint
+        args: ["--min-segment", "2"]
 ```
 
 ### Python API
@@ -124,8 +140,10 @@ for f in check_ghost_pads(board):
 - **KiCad 5 through 10**, including the KiCad 10 format change where pads
   and segments store the net *name* directly (older formats store a numeric
   id resolved through the board's net table — both are handled).
-- Net-class expectations are read from `.kicad_pro` `net_settings.classes[]`
-  (`nets` arrays and `netclass_patterns`).
+- Net-class expectations are read from `.kicad_pro`: `netclass_patterns`
+  (the KiCad 7+ form — both wildcard and regex patterns are matched, like
+  KiCad itself does) plus legacy `classes[].nets` arrays (pre-v3 schema,
+  still written by some external tools; KiCad migrates them on load).
 - Python ≥ 3.9, any OS, zero dependencies.
 
 ## Known limitations (v0.1)
@@ -137,6 +155,15 @@ for f in check_ghost_pads(board):
 - `power-width` needs an expectation source; without `.kicad_pro` classes,
   `--rule` or `--current`, it has nothing to compare against and stays
   silent.
+- **Legacy boards over-report on `ghost-pads`**: on boards last saved by
+  old KiCad versions (5.x era), pads the schematic legitimately leaves
+  unconnected may carry no net at all — the per-pad `unconnected-(...)`
+  net convention is newer. The check is calibrated for KiCad 7+ boards;
+  on older ones expect noise or use `--check power-width` only.
+  Measured on KiCad's own demo set: modern boards (StickHub, tiny_tapeout,
+  sonde) report **zero** findings and recent boards report 1–2, while
+  legacy-era boards (video, vme-wren) report dozens — that gap is the era
+  difference, not parser noise.
 
 ## Related tools
 

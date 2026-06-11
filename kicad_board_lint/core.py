@@ -183,6 +183,11 @@ def load_board(text: str) -> Board:
 
     board = Board()
     children = [n for n in root if isinstance(n, list) and n]
+    # A stray ')' can close (kicad_pcb ...) early, leaving the rest of the
+    # board as orphaned top-level forms. KiCad still loads such files (an
+    # official demo board ships this way), so adopt those forms too.
+    root_idx = forms.index(root)
+    children += [n for n in forms[root_idx + 1 :] if isinstance(n, list) and n]
 
     # Net table first — present in KiCad <= 9, absent in KiCad 10.
     for node in children:
